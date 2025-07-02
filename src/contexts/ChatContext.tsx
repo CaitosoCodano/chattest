@@ -292,26 +292,37 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; currentUser: Us
   };
 
   const sendFriendRequest = (username: string): boolean => {
+    console.log('📤 Enviando convite para username:', username);
+
     // Search for real registered users
     const registeredUsers = getAllRegisteredUsers();
+    console.log('📋 Total de usuários registrados:', registeredUsers.length);
 
     // Check if user already exists in current users list
     const existingUser = users.find(u =>
       u.username === username ||
-      (username.startsWith('#') && u.username === username)
+      (username.startsWith('#') && u.username === username) ||
+      u.username === (username.startsWith('#') ? username : `#${username}`)
     );
 
     if (existingUser) {
+      console.log('❌ Usuário já é amigo');
       return false; // Already friends
     }
 
     // Search in registered users by displayUsername, sequentialId, or username
-    const foundUser = registeredUsers.find(u =>
-      u.displayUsername === username ||
-      (username.startsWith('#') && u.displayUsername === username) ||
-      u.username === username ||
-      (username.startsWith('#') && u.sequentialId === parseInt(username.replace('#', '')))
-    );
+    const foundUser = registeredUsers.find(u => {
+      const matches =
+        u.displayUsername === username ||
+        (username.startsWith('#') && u.displayUsername === username) ||
+        u.username === username ||
+        (username.startsWith('#') && u.sequentialId === parseInt(username.replace('#', '')));
+
+      console.log(`🔍 Verificando usuário ${u.name} (${u.username}/${u.displayUsername}): ${matches ? 'MATCH' : 'no match'}`);
+      return matches;
+    });
+
+    console.log('👤 Usuário encontrado:', foundUser ? `${foundUser.name} (${foundUser.displayUsername})` : 'Nenhum');
 
     if (foundUser && foundUser.id !== currentUser.id) {
       // Check if request already exists
@@ -320,6 +331,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; currentUser: Us
       );
 
       if (existingRequest) {
+        console.log('❌ Convite já enviado');
         return false; // Request already sent
       }
 
@@ -335,17 +347,26 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; currentUser: Us
         status: 'pending',
       };
 
+      console.log('📝 Criando convite:', newRequest);
+
       // Save request to both users' localStorage
       const receiverRequests = JSON.parse(localStorage.getItem(`friend_requests_${foundUser.id}`) || '[]');
       receiverRequests.push(newRequest);
       localStorage.setItem(`friend_requests_${foundUser.id}`, JSON.stringify(receiverRequests));
 
+      // Also save to current user's sent requests for tracking
+      const senderRequests = JSON.parse(localStorage.getItem(`sent_requests_${currentUser.id}`) || '[]');
+      senderRequests.push(newRequest);
+      localStorage.setItem(`sent_requests_${currentUser.id}`, JSON.stringify(senderRequests));
+
       // Trigger storage event for synchronization
       localStorage.setItem('friend_request_update', Date.now().toString());
 
+      console.log('✅ Convite enviado com sucesso');
       return true;
     }
 
+    console.log('❌ Usuário não encontrado ou é o próprio usuário');
     return false;
   };
 
@@ -400,8 +421,11 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; currentUser: Us
   const searchUsers = (query: string): User[] => {
     if (!query.trim()) return [];
 
+    console.log('🔍 Buscando usuários com query:', query);
+
     // Get all registered users
     const registeredUsers = getAllRegisteredUsers();
+    console.log('📋 Usuários registrados encontrados:', registeredUsers.length);
 
     // Simple search - find users that match the query
     const matchingUsers = registeredUsers
@@ -413,22 +437,30 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; currentUser: Us
         const usernameMatch = u.username.toLowerCase().includes(queryLower);
         const displayMatch = u.displayUsername && u.displayUsername.toLowerCase().includes(queryLower);
         const tagMatch = query.startsWith('#') && u.displayUsername === query;
+        const sequentialMatch = query.startsWith('#') && u.sequentialId === parseInt(query.replace('#', ''));
 
-        return nameMatch || usernameMatch || displayMatch || tagMatch;
+        const matches = nameMatch || usernameMatch || displayMatch || tagMatch || sequentialMatch;
+        console.log(`👤 Usuário ${u.name} (${u.displayUsername}): ${matches ? 'MATCH' : 'no match'}`);
+
+        return matches;
       })
       .map(u => ({
         id: u.id,
         name: u.name,
-        username: u.displayUsername || u.username,
+        username: u.username, // Username original para envio do convite
+        displayUsername: u.displayUsername, // Display username para exibição
         avatar: u.avatar || '👤',
         status: getUserOnlineStatus(u.id),
       }));
 
+    console.log('✅ Usuários encontrados:', matchingUsers.length);
     return matchingUsers;
   };
 
   const getAllOnlineUsers = (): User[] => {
+    console.log('🔍 Buscando usuários online...');
     const onlineUsers: User[] = [];
+    const registeredUsers = getAllRegisteredUsers();
 
     // Check all global status keys
     for (let i = 0; i < localStorage.length; i++) {
@@ -441,13 +473,28 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; currentUser: Us
 
           // Only include if user is online and not current user
           if (now - lastSeen <= 10000 && statusData.id !== currentUser.id) {
-            onlineUsers.push({
-              id: statusData.id,
-              name: statusData.name,
-              username: statusData.username,
-              avatar: statusData.avatar,
-              status: 'online'
-            });
+            // Get full user data from registered users
+            const fullUserData = registeredUsers.find(u => u.id === statusData.id);
+
+            if (fullUserData) {
+              onlineUsers.push({
+                id: fullUserData.id,
+                name: fullUserData.name,
+                username: fullUserData.username,
+                displayUsername: fullUserData.displayUsername,
+                avatar: fullUserData.avatar || '👤',
+                status: 'online'
+              });
+            } else {
+              // Fallback to status data
+              onlineUsers.push({
+                id: statusData.id,
+                name: statusData.name,
+                username: statusData.username,
+                avatar: statusData.avatar || '👤',
+                status: 'online'
+              });
+            }
           }
         } catch (error) {
           console.error('Error parsing online user status:', error);
@@ -455,6 +502,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; currentUser: Us
       }
     }
 
+    console.log('👥 Usuários online encontrados:', onlineUsers.length);
     return onlineUsers;
   };
 

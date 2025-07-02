@@ -21,9 +21,10 @@ interface AddFriendModalProps {
 }
 
 const AddFriendModal = ({ open, onClose }: AddFriendModalProps) => {
-  const { sendFriendRequest, searchUsers, currentUser } = useChatContext();
+  const { sendFriendRequest, searchUsers, currentUser, getAllOnlineUsers } = useChatContext();
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<Record<string, unknown>[]>([]);
+  const [onlineUsers, setOnlineUsers] = useState<Record<string, unknown>[]>([]);
 
   const handleSearch = useCallback(() => {
     if (searchQuery.trim()) {
@@ -33,6 +34,15 @@ const AddFriendModal = ({ open, onClose }: AddFriendModalProps) => {
       setSearchResults([]);
     }
   }, [searchQuery, searchUsers, currentUser.id]);
+
+  // Load online users when modal opens
+  useEffect(() => {
+    if (open) {
+      const online = getAllOnlineUsers();
+      setOnlineUsers(online);
+      console.log('👥 Usuários online encontrados:', online.length);
+    }
+  }, [open, getAllOnlineUsers]);
 
   // Auto search when query changes
   useEffect(() => {
@@ -44,7 +54,12 @@ const AddFriendModal = ({ open, onClose }: AddFriendModalProps) => {
   }, [searchQuery, handleSearch]);
 
   const handleSendFriendRequest = (user: Record<string, unknown>) => {
-    const success = sendFriendRequest(user.username);
+    console.log('🔍 Enviando convite para:', user);
+    // Use displayUsername (like #1, #2) for sending the request
+    const usernameToSend = user.displayUsername as string || user.username as string;
+    console.log('📤 Username usado:', usernameToSend);
+
+    const success = sendFriendRequest(usernameToSend);
     if (success) {
       toast.success(`Pedido de amizade enviado para ${user.name}!`);
       setSearchQuery('');
@@ -124,6 +139,42 @@ const AddFriendModal = ({ open, onClose }: AddFriendModalProps) => {
               <Users className="w-12 h-12 mx-auto mb-4 text-gray-300" />
               <p className="text-sm">Nenhum usuário encontrado</p>
               <p className="text-xs">Verifique se o nome ou ID está correto</p>
+            </div>
+          )}
+
+          {!searchQuery && onlineUsers.length > 0 && (
+            <div className="space-y-2 max-h-60 overflow-y-auto">
+              <h4 className="text-sm font-medium text-gray-700">Usuários Online:</h4>
+              {onlineUsers.map((user) => (
+                <div
+                  key={user.id}
+                  className="flex items-center justify-between p-3 bg-green-50 rounded-lg border border-green-200"
+                >
+                  <div className="flex items-center space-x-3">
+                    <Avatar className="w-10 h-10">
+                      <AvatarFallback className="bg-gradient-to-r from-green-500 to-blue-500 text-white">
+                        {user.avatar}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <p className="font-medium text-gray-900">{user.name}</p>
+                      <div className="flex items-center space-x-2">
+                        <p className="text-sm text-gray-500">{user.username}</p>
+                        <Badge className="bg-green-500">
+                          online
+                        </Badge>
+                      </div>
+                    </div>
+                  </div>
+                  <Button
+                    onClick={() => handleSendFriendRequest(user)}
+                    size="sm"
+                    className="bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600"
+                  >
+                    Enviar Convite
+                  </Button>
+                </div>
+              ))}
             </div>
           )}
 
