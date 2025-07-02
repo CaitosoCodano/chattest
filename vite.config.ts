@@ -14,11 +14,12 @@ export default defineConfig(({ mode }) => ({
     port: 4173,
   },
   build: {
-    target: 'es2015',
-    minify: 'esbuild',
+    target: 'es2020',
+    minify: false, // Disable minification to avoid hoisting issues
     rollupOptions: {
       output: {
         manualChunks: undefined,
+        format: 'es',
       },
     },
   },
@@ -34,5 +35,8 @@ export default defineConfig(({ mode }) => ({
   },
   define: {
     'process.env.NODE_ENV': JSON.stringify(mode),
+  },
+  esbuild: {
+    keepNames: true, // Preserve function names
   },
 }));

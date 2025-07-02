@@ -1,5 +1,5 @@
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 
 interface User {
   id: string;
@@ -86,19 +86,30 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; currentUser: Us
   const [friendRequests, setFriendRequests] = useState<FriendRequest[]>([]);
   const [activeConversation, setActiveConversation] = useState<string | null>(null);
 
-  // Load persisted data and set up synchronization
-  useEffect(() => {
-    loadPersistedData();
-    setupStorageSync();
-    updateUserOnlineStatus(true);
+  // Helper functions - declared first to avoid hoisting issues
+  const getUserOnlineStatus = (userId: string): 'online' | 'offline' | 'away' => {
+    const lastSeen = localStorage.getItem(`user_last_seen_${userId}`);
+    if (!lastSeen) return 'offline';
 
-    // Cleanup on unmount
-    return () => {
-      updateUserOnlineStatus(false);
-    };
-  }, [currentUser.id, loadPersistedData, setupStorageSync, updateUserOnlineStatus]);
+    const lastSeenTime = new Date(lastSeen);
+    const now = new Date();
+    const diffMinutes = (now.getTime() - lastSeenTime.getTime()) / (1000 * 60);
 
-  const loadPersistedData = () => {
+    if (diffMinutes < 5) return 'online';
+    if (diffMinutes < 30) return 'away';
+    return 'offline';
+  };
+
+  const updateUserOnlineStatus = useCallback((isOnline: boolean) => {
+    const timestamp = new Date().toISOString();
+    localStorage.setItem(`user_last_seen_${currentUser.id}`, timestamp);
+    localStorage.setItem(`user_status_${currentUser.id}`, isOnline ? 'online' : 'offline');
+
+    // Trigger storage event for other tabs
+    localStorage.setItem('user_status_update', timestamp);
+  }, [currentUser.id]);
+
+  const loadPersistedData = useCallback(() => {
     // Load conversations
     const savedConversations = localStorage.getItem(`conversations_${currentUser.id}`);
     if (savedConversations) {
@@ -138,9 +149,9 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; currentUser: Us
         console.error('Error loading friend requests:', error);
       }
     }
-  };
+  }, [currentUser.id]);
 
-  const setupStorageSync = () => {
+  const setupStorageSync = useCallback(() => {
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === 'user_status_update') {
         // Update online status of all users
@@ -176,52 +187,20 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; currentUser: Us
       window.removeEventListener('storage', handleStorageChange);
       clearInterval(statusInterval);
     };
-  };
+  }, [currentUser.id]);
 
-  const updateUserOnlineStatus = (isOnline: boolean) => {
-    const statusKey = `user_status_${currentUser.id}`;
-    const globalStatusKey = `global_user_status_${currentUser.id}`;
+  // Load persisted data and set up synchronization
+  useEffect(() => {
+    loadPersistedData();
+    const cleanup = setupStorageSync();
+    updateUserOnlineStatus(true);
 
-    if (isOnline) {
-      const statusData = {
-        id: currentUser.id,
-        name: currentUser.name,
-        username: currentUser.displayUsername || currentUser.username,
-        avatar: currentUser.avatar,
-        status: 'online',
-        lastSeen: new Date().toISOString(),
-        timestamp: Date.now()
-      };
-
-      localStorage.setItem(statusKey, JSON.stringify(statusData));
-      localStorage.setItem(globalStatusKey, JSON.stringify(statusData));
-
-      // Set up heartbeat to keep status alive
-      const heartbeat = setInterval(() => {
-        const updatedStatus = {
-          ...statusData,
-          timestamp: Date.now()
-        };
-        localStorage.setItem(statusKey, JSON.stringify(updatedStatus));
-        localStorage.setItem(globalStatusKey, JSON.stringify(updatedStatus));
-        localStorage.setItem('user_status_update', Date.now().toString());
-      }, 3000); // Update every 3 seconds
-
-      // Store heartbeat interval for cleanup
-      (window as Record<string, unknown>).statusHeartbeat = heartbeat;
-    } else {
-      localStorage.removeItem(statusKey);
-      localStorage.removeItem(globalStatusKey);
-
-      // Clear heartbeat
-      if ((window as Record<string, unknown>).statusHeartbeat) {
-        clearInterval((window as Record<string, unknown>).statusHeartbeat as number);
-      }
-    }
-
-    // Trigger storage event for other tabs/browsers
-    localStorage.setItem('user_status_update', Date.now().toString());
-  };
+    // Cleanup on unmount
+    return () => {
+      updateUserOnlineStatus(false);
+      if (cleanup) cleanup();
+    };
+  }, [currentUser.id, loadPersistedData, setupStorageSync, updateUserOnlineStatus]);
 
   // Persist data when it changes
   useEffect(() => {
@@ -416,34 +395,6 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; currentUser: Us
   const rejectFriendRequest = (requestId: string) => {
     setFriendRequests(prev => prev.filter(req => req.id !== requestId));
     localStorage.setItem('friend_request_update', Date.now().toString());
-  };
-
-  const getUserOnlineStatus = (userId: string): 'online' | 'offline' => {
-    const statusKey = `user_status_${userId}`;
-    const globalStatusKey = `global_user_status_${userId}`;
-
-    // Check both local and global status
-    const statusData = localStorage.getItem(statusKey) || localStorage.getItem(globalStatusKey);
-
-    if (!statusData) return 'offline';
-
-    try {
-      const status = JSON.parse(statusData);
-      const now = Date.now();
-      const lastSeen = status.timestamp || 0;
-
-      // Consider user offline if no heartbeat for more than 10 seconds
-      if (now - lastSeen > 10000) {
-        // Clean up old status
-        localStorage.removeItem(statusKey);
-        localStorage.removeItem(globalStatusKey);
-        return 'offline';
-      }
-
-      return 'online';
-    } catch (error) {
-      return 'offline';
-    }
   };
 
   const searchUsers = (query: string): User[] => {
