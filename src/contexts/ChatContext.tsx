@@ -1,5 +1,6 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { useWebSocket } from '@/hooks/useWebSocket';
 
 interface User {
   id: string;
@@ -48,6 +49,7 @@ interface ChatContextType {
   users: User[];
   friendRequests: FriendRequest[];
   activeConversation: string | null;
+  isConnected: boolean;
   sendMessage: (conversationId: string, content: string) => void;
   createConversation: (userId: string) => string;
   setActiveConversation: (id: string | null) => void;
@@ -85,6 +87,39 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; currentUser: Us
   const [users, setUsers] = useState<User[]>([]);
   const [friendRequests, setFriendRequests] = useState<FriendRequest[]>([]);
   const [activeConversation, setActiveConversation] = useState<string | null>(null);
+
+  // WebSocket connection
+  const {
+    isConnected,
+    onlineUsers,
+    sendMessage: wsSendMessage,
+    sendFriendRequest: wsSendFriendRequest,
+    acceptFriendRequest: wsAcceptFriendRequest,
+    startTyping,
+    stopTyping
+  } = useWebSocket({
+    currentUser,
+    onMessageReceived: (data) => {
+      console.log('📨 Message received via WebSocket:', data);
+      setMessages(prev => ({
+        ...prev,
+        [data.conversationId]: [...(prev[data.conversationId] || []), data.message]
+      }));
+    },
+    onFriendRequestReceived: (request) => {
+      console.log('💌 Friend request received via WebSocket:', request);
+      setFriendRequests(prev => [...prev, request]);
+    },
+    onUserOnline: (userData) => {
+      console.log('👤 User online via WebSocket:', userData);
+    },
+    onUserOffline: (data) => {
+      console.log('👋 User offline via WebSocket:', data);
+    },
+    onOnlineUsersList: (usersList) => {
+      console.log('📋 Online users list via WebSocket:', usersList);
+    }
+  });
 
   // Helper functions - declared first to avoid hoisting issues
   const getUserOnlineStatus = (userId: string): 'online' | 'offline' | 'away' => {
@@ -226,29 +261,37 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; currentUser: Us
     const receiverId = conversation.participants.find(p => p !== currentUser.id);
     if (!receiverId) return;
 
-    const newMessage: Message = {
-      id: `msg_${Date.now()}`,
-      senderId: currentUser.id,
-      receiverId,
-      content,
-      timestamp: new Date(),
-      type: 'text',
-      read: false,
-    };
+    // Try WebSocket first
+    const wsSuccess = wsSendMessage(conversationId, content, receiverId);
 
-    setMessages(prev => ({
-      ...prev,
-      [conversationId]: [...(prev[conversationId] || []), newMessage],
-    }));
+    if (!wsSuccess) {
+      // Fallback to localStorage for offline mode
+      console.log('📱 WebSocket unavailable, using localStorage fallback');
 
-    // Update conversation last message
-    setConversations(prev =>
-      prev.map(conv =>
-        conv.id === conversationId
-          ? { ...conv, lastMessage: newMessage, updatedAt: new Date() }
-          : conv
-      )
-    );
+      const newMessage: Message = {
+        id: `msg_${Date.now()}`,
+        senderId: currentUser.id,
+        receiverId,
+        content,
+        timestamp: new Date(),
+        type: 'text',
+        read: false,
+      };
+
+      setMessages(prev => ({
+        ...prev,
+        [conversationId]: [...(prev[conversationId] || []), newMessage],
+      }));
+
+      // Update conversation last message
+      setConversations(prev =>
+        prev.map(conv =>
+          conv.id === conversationId
+            ? { ...conv, lastMessage: newMessage, updatedAt: new Date() }
+            : conv
+        )
+      );
+    }
   };
 
   const createConversation = (userId: string): string => {
@@ -349,21 +392,32 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; currentUser: Us
 
       console.log('📝 Criando convite:', newRequest);
 
-      // Save request to both users' localStorage
-      const receiverRequests = JSON.parse(localStorage.getItem(`friend_requests_${foundUser.id}`) || '[]');
-      receiverRequests.push(newRequest);
-      localStorage.setItem(`friend_requests_${foundUser.id}`, JSON.stringify(receiverRequests));
+      // Try WebSocket first
+      const wsSuccess = wsSendFriendRequest(foundUser.id);
 
-      // Also save to current user's sent requests for tracking
-      const senderRequests = JSON.parse(localStorage.getItem(`sent_requests_${currentUser.id}`) || '[]');
-      senderRequests.push(newRequest);
-      localStorage.setItem(`sent_requests_${currentUser.id}`, JSON.stringify(senderRequests));
+      if (wsSuccess) {
+        console.log('✅ Convite enviado via WebSocket');
+        return true;
+      } else {
+        // Fallback to localStorage
+        console.log('📱 WebSocket unavailable, using localStorage fallback');
 
-      // Trigger storage event for synchronization
-      localStorage.setItem('friend_request_update', Date.now().toString());
+        // Save request to both users' localStorage
+        const receiverRequests = JSON.parse(localStorage.getItem(`friend_requests_${foundUser.id}`) || '[]');
+        receiverRequests.push(newRequest);
+        localStorage.setItem(`friend_requests_${foundUser.id}`, JSON.stringify(receiverRequests));
 
-      console.log('✅ Convite enviado com sucesso');
-      return true;
+        // Also save to current user's sent requests for tracking
+        const senderRequests = JSON.parse(localStorage.getItem(`sent_requests_${currentUser.id}`) || '[]');
+        senderRequests.push(newRequest);
+        localStorage.setItem(`sent_requests_${currentUser.id}`, JSON.stringify(senderRequests));
+
+        // Trigger storage event for synchronization
+        localStorage.setItem('friend_request_update', Date.now().toString());
+
+        console.log('✅ Convite enviado via localStorage');
+        return true;
+      }
     }
 
     console.log('❌ Usuário não encontrado ou é o próprio usuário');
@@ -459,7 +513,16 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; currentUser: Us
 
   const getAllOnlineUsers = (): User[] => {
     console.log('🔍 Buscando usuários online...');
-    const onlineUsers: User[] = [];
+
+    // Use WebSocket online users if available
+    if (isConnected && onlineUsers.length > 0) {
+      console.log('🌐 Usando usuários online do WebSocket:', onlineUsers.length);
+      return onlineUsers.filter(user => user.id !== currentUser.id);
+    }
+
+    // Fallback to localStorage
+    console.log('📱 WebSocket não disponível, usando localStorage');
+    const localOnlineUsers: User[] = [];
     const registeredUsers = getAllRegisteredUsers();
 
     // Check all global status keys
@@ -477,7 +540,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; currentUser: Us
             const fullUserData = registeredUsers.find(u => u.id === statusData.id);
 
             if (fullUserData) {
-              onlineUsers.push({
+              localOnlineUsers.push({
                 id: fullUserData.id,
                 name: fullUserData.name,
                 username: fullUserData.username,
@@ -487,7 +550,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; currentUser: Us
               });
             } else {
               // Fallback to status data
-              onlineUsers.push({
+              localOnlineUsers.push({
                 id: statusData.id,
                 name: statusData.name,
                 username: statusData.username,
@@ -502,8 +565,8 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; currentUser: Us
       }
     }
 
-    console.log('👥 Usuários online encontrados:', onlineUsers.length);
-    return onlineUsers;
+    console.log('👥 Usuários online encontrados (localStorage):', localOnlineUsers.length);
+    return localOnlineUsers;
   };
 
   // Conversation management functions
@@ -590,6 +653,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; currentUser: Us
         users,
         friendRequests,
         activeConversation,
+        isConnected,
         sendMessage,
         createConversation,
         setActiveConversation,

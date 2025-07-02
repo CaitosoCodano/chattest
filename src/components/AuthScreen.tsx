@@ -34,10 +34,10 @@ const AuthScreen = ({ onLogin }: AuthScreenProps) => {
   const [isLoading, setIsLoading] = useState(false);
   const [registeredUsersCount, setRegisteredUsersCount] = useState(0);
 
-  // Sync server configuration
-  const SYNC_SERVER_URL = import.meta.env.PROD
-    ? '/api'  // In production, use relative URL (same server)
-    : 'http://localhost:3001/api';  // In development, use separate server
+  // WebSocket server configuration
+  const SERVER_URL = import.meta.env.PROD
+    ? window.location.origin  // In production, use same server
+    : 'http://localhost:3000';  // In development, use WebSocket server
 
   // Fallback keys for offline mode
   const SHARED_USERS_KEY = 'shared_registered_users_db';
@@ -159,7 +159,7 @@ const AuthScreen = ({ onLogin }: AuthScreenProps) => {
   // API functions for sync server
   const fetchUsersFromServer = async () => {
     try {
-      const response = await fetch(`${SYNC_SERVER_URL}/users`);
+      const response = await fetch(`${SERVER_URL}/api/users`);
       if (response.ok) {
         const data = await response.json();
         console.log('🌐 Dados carregados do servidor:', data.users.length, 'usuários');
@@ -173,7 +173,7 @@ const AuthScreen = ({ onLogin }: AuthScreenProps) => {
 
   const saveUserToServer = async (userData: UserData) => {
     try {
-      const response = await fetch(`${SYNC_SERVER_URL}/users`, {
+      const response = await fetch(`${SERVER_URL}/api/users`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(userData)
