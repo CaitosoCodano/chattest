@@ -13,6 +13,15 @@ export default defineConfig(({ mode }) => ({
     host: "::",
     port: 4173,
   },
+  build: {
+    target: 'es2015',
+    minify: 'esbuild',
+    rollupOptions: {
+      output: {
+        manualChunks: undefined,
+      },
+    },
+  },
   plugins: [
     react(),
     mode === 'development' &&
@@ -22,5 +31,8 @@ export default defineConfig(({ mode }) => ({
     alias: {
       "@": path.resolve(__dirname, "./src"),
     },
+  },
+  define: {
+    'process.env.NODE_ENV': JSON.stringify(mode),
   },
 }));

@@ -20,17 +20,7 @@ interface UserData {
 }
 
 interface AuthScreenProps {
-  onLogin: (userData: {
-    id: string;
-    name: string;
-    username: string;
-    password: string;
-    displayUsername: string;
-    sequentialId: number;
-    avatar: string;
-    status: 'online';
-    createdAt: string;
-  }) => void;
+  onLogin: (userData: UserData) => void;
 }
 
 const AuthScreen = ({ onLogin }: AuthScreenProps) => {
@@ -44,27 +34,8 @@ const AuthScreen = ({ onLogin }: AuthScreenProps) => {
   const [isLoading, setIsLoading] = useState(false);
   const [registeredUsersCount, setRegisteredUsersCount] = useState(0);
 
-  const updateRegisteredUsersCount = useCallback(() => {
-    const users = getAllRegisteredUsers();
-    setRegisteredUsersCount(users.length);
-  }, []);
-
-  // Migration function to move old data to shared database
-  useEffect(() => {
-    console.log('🔄 Iniciando migração de dados...');
-    migrateToSharedDatabase();
-    updateRegisteredUsersCount();
-  }, [updateRegisteredUsersCount]);
-
-  // Update count on component mount (don't clear data automatically)
-  useEffect(() => {
-    updateRegisteredUsersCount();
-  }, [updateRegisteredUsersCount]);
-
-
-
   // Sync server configuration
-  const SYNC_SERVER_URL = process.env.NODE_ENV === 'production'
+  const SYNC_SERVER_URL = import.meta.env.PROD
     ? '/api'  // In production, use relative URL (same server)
     : 'http://localhost:3001/api';  // In development, use separate server
 
@@ -72,39 +43,7 @@ const AuthScreen = ({ onLogin }: AuthScreenProps) => {
   const SHARED_USERS_KEY = 'shared_registered_users_db';
   const SHARED_COUNTER_KEY = 'shared_user_counter';
 
-  // API functions for sync server
-  const fetchUsersFromServer = async () => {
-    try {
-      const response = await fetch(`${SYNC_SERVER_URL}/users`);
-      if (response.ok) {
-        const data = await response.json();
-        console.log('🌐 Dados carregados do servidor:', data.users.length, 'usuários');
-        return data.users;
-      }
-    } catch (error) {
-      console.log('⚠️ Servidor offline, usando dados locais');
-    }
-    return null;
-  };
-
-  const saveUserToServer = async (userData: UserData) => {
-    try {
-      const response = await fetch(`${SYNC_SERVER_URL}/users`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(userData)
-      });
-      if (response.ok) {
-        const savedUser = await response.json();
-        console.log('🌐 Usuário salvo no servidor:', savedUser.displayUsername);
-        return savedUser;
-      }
-    } catch (error) {
-      console.log('⚠️ Erro ao salvar no servidor, usando localStorage');
-    }
-    return null;
-  };
-
+  // Helper functions - declared first to avoid hoisting issues
   const generateNextUserId = () => {
     const lastUserId = localStorage.getItem(SHARED_COUNTER_KEY);
     const nextId = lastUserId ? parseInt(lastUserId) + 1 : 1;
@@ -159,21 +98,10 @@ const AuthScreen = ({ onLogin }: AuthScreenProps) => {
     return users;
   };
 
-  // Async version that tries server first
-  const getAllRegisteredUsersAsync = async () => {
-    console.log('📋 Buscando usuários (async)...');
-
-    // Try server first
-    const serverUsers = await fetchUsersFromServer();
-    if (serverUsers) {
-      // Update localStorage with server data
-      localStorage.setItem(SHARED_USERS_KEY, JSON.stringify(serverUsers));
-      return serverUsers;
-    }
-
-    // Fallback to localStorage
-    return getAllRegisteredUsers();
-  };
+  const updateRegisteredUsersCount = useCallback(() => {
+    const users = getAllRegisteredUsers();
+    setRegisteredUsersCount(users.length);
+  }, []);
 
   const migrateToSharedDatabase = () => {
     console.log('🔍 Verificando necessidade de migração...');
@@ -215,6 +143,71 @@ const AuthScreen = ({ onLogin }: AuthScreenProps) => {
       console.log('ℹ️ Nenhum dado antigo encontrado para migrar');
     }
   };
+
+  // Migration function to move old data to shared database
+  useEffect(() => {
+    console.log('🔄 Iniciando migração de dados...');
+    migrateToSharedDatabase();
+    updateRegisteredUsersCount();
+  }, [updateRegisteredUsersCount]);
+
+  // Update count on component mount (don't clear data automatically)
+  useEffect(() => {
+    updateRegisteredUsersCount();
+  }, [updateRegisteredUsersCount]);
+
+  // API functions for sync server
+  const fetchUsersFromServer = async () => {
+    try {
+      const response = await fetch(`${SYNC_SERVER_URL}/users`);
+      if (response.ok) {
+        const data = await response.json();
+        console.log('🌐 Dados carregados do servidor:', data.users.length, 'usuários');
+        return data.users;
+      }
+    } catch (error) {
+      console.log('⚠️ Servidor offline, usando dados locais');
+    }
+    return null;
+  };
+
+  const saveUserToServer = async (userData: UserData) => {
+    try {
+      const response = await fetch(`${SYNC_SERVER_URL}/users`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(userData)
+      });
+      if (response.ok) {
+        const savedUser = await response.json();
+        console.log('🌐 Usuário salvo no servidor:', savedUser.displayUsername);
+        return savedUser;
+      }
+    } catch (error) {
+      console.log('⚠️ Erro ao salvar no servidor, usando localStorage');
+    }
+    return null;
+  };
+
+
+
+  // Async version that tries server first
+  const getAllRegisteredUsersAsync = async () => {
+    console.log('📋 Buscando usuários (async)...');
+
+    // Try server first
+    const serverUsers = await fetchUsersFromServer();
+    if (serverUsers) {
+      // Update localStorage with server data
+      localStorage.setItem(SHARED_USERS_KEY, JSON.stringify(serverUsers));
+      return serverUsers;
+    }
+
+    // Fallback to localStorage
+    return getAllRegisteredUsers();
+  };
+
+
 
   const saveUserToSharedDatabase = (userData: UserData) => {
     const existingUsers = getAllRegisteredUsers();
