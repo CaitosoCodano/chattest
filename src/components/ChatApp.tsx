@@ -7,7 +7,7 @@ import UserProfile from '@/components/UserProfile';
 import { useChatContext } from '@/contexts/ChatContext';
 
 interface ChatAppProps {
-  currentUser: any;
+  currentUser: Record<string, unknown>;
   onLogout: () => void;
 }
 

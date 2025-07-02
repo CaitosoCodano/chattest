@@ -96,7 +96,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; currentUser: Us
     return () => {
       updateUserOnlineStatus(false);
     };
-  }, [currentUser.id]);
+  }, [currentUser.id, loadPersistedData, setupStorageSync, updateUserOnlineStatus]);
 
   const loadPersistedData = () => {
     // Load conversations
@@ -208,14 +208,14 @@ export const ChatProvider: React.FC<{ children: React.ReactNode; currentUser: Us
       }, 3000); // Update every 3 seconds
 
       // Store heartbeat interval for cleanup
-      (window as any).statusHeartbeat = heartbeat;
+      (window as Record<string, unknown>).statusHeartbeat = heartbeat;
     } else {
       localStorage.removeItem(statusKey);
       localStorage.removeItem(globalStatusKey);
 
       // Clear heartbeat
-      if ((window as any).statusHeartbeat) {
-        clearInterval((window as any).statusHeartbeat);
+      if ((window as Record<string, unknown>).statusHeartbeat) {
+        clearInterval((window as Record<string, unknown>).statusHeartbeat as number);
       }
     }
 

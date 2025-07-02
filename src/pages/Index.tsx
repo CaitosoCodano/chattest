@@ -6,7 +6,7 @@ import { ChatProvider } from '@/contexts/ChatContext';
 
 const Index = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [currentUser, setCurrentUser] = useState<Record<string, unknown> | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   // Check for saved session on component mount
@@ -25,7 +25,7 @@ const Index = () => {
     setIsLoading(false);
   }, []);
 
-  const handleLogin = (userData: any) => {
+  const handleLogin = (userData: Record<string, unknown>) => {
     setCurrentUser(userData);
     setIsAuthenticated(true);
     // Save user session to localStorage

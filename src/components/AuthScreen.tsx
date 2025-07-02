@@ -7,6 +7,18 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { User, AlertCircle } from 'lucide-react';
 import { toast } from '@/components/ui/sonner';
 
+interface UserData {
+  id: string;
+  name: string;
+  username: string;
+  password: string;
+  displayUsername?: string;
+  sequentialId?: number;
+  avatar: string;
+  status: 'online' | 'offline';
+  createdAt: string;
+}
+
 interface AuthScreenProps {
   onLogin: (userData: {
     id: string;
@@ -32,17 +44,17 @@ const AuthScreen = ({ onLogin }: AuthScreenProps) => {
   const [isLoading, setIsLoading] = useState(false);
   const [registeredUsersCount, setRegisteredUsersCount] = useState(0);
 
+  const updateRegisteredUsersCount = useCallback(() => {
+    const users = getAllRegisteredUsers();
+    setRegisteredUsersCount(users.length);
+  }, []);
+
   // Migration function to move old data to shared database
   useEffect(() => {
     console.log('🔄 Iniciando migração de dados...');
     migrateToSharedDatabase();
     updateRegisteredUsersCount();
-  }, []);
-
-  const updateRegisteredUsersCount = useCallback(() => {
-    const users = getAllRegisteredUsers();
-    setRegisteredUsersCount(users.length);
-  }, []);
+  }, [updateRegisteredUsersCount]);
 
   // Update count on component mount (don't clear data automatically)
   useEffect(() => {
@@ -52,7 +64,9 @@ const AuthScreen = ({ onLogin }: AuthScreenProps) => {
 
 
   // Sync server configuration
-  const SYNC_SERVER_URL = 'http://localhost:3001/api';
+  const SYNC_SERVER_URL = process.env.NODE_ENV === 'production'
+    ? '/api'  // In production, use relative URL (same server)
+    : 'http://localhost:3001/api';  // In development, use separate server
 
   // Fallback keys for offline mode
   const SHARED_USERS_KEY = 'shared_registered_users_db';
@@ -73,7 +87,7 @@ const AuthScreen = ({ onLogin }: AuthScreenProps) => {
     return null;
   };
 
-  const saveUserToServer = async (userData: any) => {
+  const saveUserToServer = async (userData: UserData) => {
     try {
       const response = await fetch(`${SYNC_SERVER_URL}/users`, {
         method: 'POST',
@@ -202,7 +216,7 @@ const AuthScreen = ({ onLogin }: AuthScreenProps) => {
     }
   };
 
-  const saveUserToSharedDatabase = (userData: any) => {
+  const saveUserToSharedDatabase = (userData: UserData) => {
     const existingUsers = getAllRegisteredUsers();
     const updatedUsers = [...existingUsers, userData];
     localStorage.setItem(SHARED_USERS_KEY, JSON.stringify(updatedUsers));
@@ -210,7 +224,7 @@ const AuthScreen = ({ onLogin }: AuthScreenProps) => {
 
   const validateLogin = (username: string, password: string) => {
     const allUsers = getAllRegisteredUsers();
-    const user = allUsers.find(u => u.username === username);
+    const user = allUsers.find((u: UserData) => u.username === username);
 
     if (!user) {
       return { success: false, message: 'Usuário não encontrado. Você precisa se cadastrar primeiro.' };
@@ -267,7 +281,7 @@ const AuthScreen = ({ onLogin }: AuthScreenProps) => {
     try {
       // Check if username already exists (try server first)
       const allUsers = await getAllRegisteredUsersAsync();
-      const existingUser = allUsers.find((u: any) => u.username === registerData.username);
+      const existingUser = allUsers.find((u: UserData) => u.username === registerData.username);
       if (existingUser) {
         toast.error('Nome de usuário já existe. Escolha outro.');
         setIsLoading(false);
@@ -278,7 +292,7 @@ const AuthScreen = ({ onLogin }: AuthScreenProps) => {
       await new Promise(resolve => setTimeout(resolve, 1000));
 
       // Create new user data
-      const userData: any = {
+      const userData: UserData = {
         id: `user_${Date.now()}`,
         name: registerData.name,
         username: registerData.username,

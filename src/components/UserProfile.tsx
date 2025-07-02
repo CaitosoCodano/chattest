@@ -12,7 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 
 interface UserProfileProps {
-  user: any;
+  user: Record<string, unknown>;
   open: boolean;
   onClose: () => void;
   onLogout: () => void;

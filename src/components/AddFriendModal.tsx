@@ -1,5 +1,5 @@
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useChatContext } from '@/contexts/ChatContext';
 import {
   Dialog,
@@ -23,16 +23,16 @@ interface AddFriendModalProps {
 const AddFriendModal = ({ open, onClose }: AddFriendModalProps) => {
   const { sendFriendRequest, searchUsers, currentUser } = useChatContext();
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [searchResults, setSearchResults] = useState<Record<string, unknown>[]>([]);
 
-  const handleSearch = () => {
+  const handleSearch = useCallback(() => {
     if (searchQuery.trim()) {
       const results = searchUsers(searchQuery);
       setSearchResults(results.filter(user => user.id !== currentUser.id));
     } else {
       setSearchResults([]);
     }
-  };
+  }, [searchQuery, searchUsers, currentUser.id]);
 
   // Auto search when query changes
   useEffect(() => {
@@ -41,9 +41,9 @@ const AddFriendModal = ({ open, onClose }: AddFriendModalProps) => {
     }, 300); // Debounce search
 
     return () => clearTimeout(timeoutId);
-  }, [searchQuery]);
+  }, [searchQuery, handleSearch]);
 
-  const handleSendFriendRequest = (user: any) => {
+  const handleSendFriendRequest = (user: Record<string, unknown>) => {
     const success = sendFriendRequest(user.username);
     if (success) {
       toast.success(`Pedido de amizade enviado para ${user.name}!`);

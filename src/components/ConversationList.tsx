@@ -45,7 +45,7 @@ const ConversationList = ({ onAddFriend, onShowProfile }: ConversationListProps)
   const [showPasswordDialog, setShowPasswordDialog] = useState(false);
   const [selectedConversation, setSelectedConversation] = useState<string | null>(null);
   const [password, setPassword] = useState('');
-  const [onlineUsers, setOnlineUsers] = useState<any[]>([]);
+  const [onlineUsers, setOnlineUsers] = useState<Record<string, unknown>[]>([]);
   const [showOnlineUsers, setShowOnlineUsers] = useState(false);
 
   // Update online users periodically
@@ -61,7 +61,7 @@ const ConversationList = ({ onAddFriend, onShowProfile }: ConversationListProps)
     return () => clearInterval(interval);
   }, [getAllOnlineUsers]);
 
-  const getConversationUser = (conversation: any) => {
+  const getConversationUser = (conversation: Record<string, unknown>) => {
     const otherUserId = conversation.participants.find((id: string) => id !== currentUser.id);
     return users.find(user => user.id === otherUserId);
   };
